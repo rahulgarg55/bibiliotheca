@@ -263,8 +263,59 @@ class TestBorrowReturn:
             headers=auth_headers(user_token),
             timeout=10,
         )
-        # 201 on first borrow; 400 if already borrowed in this test session
-        assert resp.status_code in (201, 400)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert "loan" in data
+        assert data["availableCopies"] == 2
+
+    def test_borrow_fails_when_no_copies_available(self, admin_token):
+        """Verify that borrowing fails when all copies of a book are already checked out."""
+        payload = {
+            "title": "Scarce Book Test",
+            "author": "Testing",
+            "isbn": f"SCA-{uuid.uuid4().int % 10**8:08d}",
+            "genre": "Test",
+            "copies": 1
+        }
+        b_resp = requests.post(api("/api/books"), json=payload, headers=auth_headers(admin_token), timeout=10)
+        book_id = b_resp.json()["id"]
+        
+        email1 = unique_email()
+        register_user(email=email1)
+        u1_token, _ = login_user(email1)
+        requests.post(api(f"/api/books/{book_id}/borrow"), headers=auth_headers(u1_token), timeout=10)
+        
+        email2 = unique_email()
+        register_user(email=email2)
+        u2_token, _ = login_user(email2)
+        resp2 = requests.post(api(f"/api/books/{book_id}/borrow"), headers=auth_headers(u2_token), timeout=10)
+        assert resp2.status_code == 400
+        assert "available" in resp2.json()["error"].lower()
+
+    def test_return_overdue_book_calculates_fine(self, admin_token):
+        """Verify that returning an overdue book calculates and records the $0.50 daily fine."""
+        payload = {
+            "title": "Overdue Book Test",
+            "author": "Testing",
+            "isbn": f"OVD-{uuid.uuid4().int % 10**8:08d}",
+            "genre": "Test",
+            "copies": 1
+        }
+        b_resp = requests.post(api("/api/books"), json=payload, headers=auth_headers(admin_token), timeout=10)
+        book_id = b_resp.json()["id"]
+        
+        email1 = unique_email()
+        register_user(email=email1)
+        u_token, _ = login_user(email1)
+        
+        borrow_resp = requests.post(api(f"/api/books/{book_id}/borrow"), headers=auth_headers(u_token), timeout=10)
+        loan_id = borrow_resp.json()["loan"]["id"]
+        
+        requests.post(api("/api/logs/simulate-time"), json={"days": 20}, headers=auth_headers(admin_token), timeout=10)
+        
+        ret_resp = requests.post(api(f"/api/books/loans/{loan_id}/return"), headers=auth_headers(u_token), timeout=10)
+        assert ret_resp.status_code == 200
+        assert ret_resp.json()["fineAmount"] == pytest.approx(3.0)
 
     def test_borrowing_same_book_twice_returns_400(self, user_token, sample_book_id):
         """Verify that borrowing a book already on active loan returns HTTP 400."""
@@ -287,17 +338,33 @@ class TestBorrowReturn:
 
 
 class TestReviews:
-    def test_authenticated_user_can_submit_review(self, user_token, sample_book_id):
-        """Verify that a user can post a review and the response contains the submitted rating."""
-        payload = {"rating": 5, "comment": "Excellent integration test book!"}
+    def test_authenticated_user_can_submit_review(self, user_token, admin_token):
+        """Verify that a user can post a review and it aggregates the average rating."""
+        payload = {
+            "title": "Review Book Test",
+            "author": "Testing",
+            "isbn": f"REV-{uuid.uuid4().int % 10**8:08d}",
+            "genre": "Test",
+            "copies": 1
+        }
+        b_resp = requests.post(api("/api/books"), json=payload, headers=auth_headers(admin_token), timeout=10)
+        book_id = b_resp.json()["id"]
+
+        review_payload = {"rating": 5, "comment": "Excellent integration test book!"}
         resp = requests.post(
-            api(f"/api/books/{sample_book_id}/review"),
-            json=payload,
+            api(f"/api/books/{book_id}/review"),
+            json=review_payload,
             headers=auth_headers(user_token),
             timeout=10,
         )
         assert resp.status_code == 201
         assert resp.json()["rating"] == 5
+        
+        book_resp = requests.get(api("/api/books"), timeout=10)
+        book = next((b for b in book_resp.json() if b["id"] == book_id), None)
+        assert book is not None
+        assert book["rating"] == 5.0
+        assert book["ratingsCount"] == 1
 
     def test_review_without_comment_returns_400(self, user_token, sample_book_id):
         """Verify that submitting a review with only a rating but no comment returns HTTP 400."""

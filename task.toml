@@ -11,11 +11,10 @@ subcategories = [ "api_integration", "db_interaction" ]
 number_of_milestones = 0
 codebase_size = "minimal"
 languages = [ "javascript" ]
-tags = [ "nodejs", "express", "prisma", "postgres", "redis", "kafka", "rest-api", "jwt" ]
+tags = [ "nodejs", "express", "prisma", "postgres", "rest-api", "jwt" ]
 expert_time_estimate_min = 60
 junior_time_estimate_min = 120
-custom_docker_compose = true
-is_multi_container = true
+
 
 # Verifier: runs the test script to check task completion
 [verifier]

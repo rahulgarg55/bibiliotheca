@@ -16,6 +16,7 @@ async function main() {
 
   // Hash standard password for all seed members
   const passwordHash = await bcrypt.hash("password123", 10);
+  const adminHash = await bcrypt.hash("Admin@1234", 10);
 
   // Seed Users
   const user1 = await prisma.user.create({
@@ -82,8 +83,8 @@ async function main() {
     data: {
       id: "usr-admin",
       name: "Library Administrator",
-      email: "admin@library.org",
-      passwordHash,
+      email: "admin@bibliotheca.com",
+      passwordHash: adminHash,
       avatarColor: "#ec4899",
       status: "active",
       role: "admin",

@@ -80,7 +80,7 @@ router.get('/', async (req, res) => {
 });
 
 // Add Publication (Admin Only)
-router.post('/', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const { title, author, isbn, genre, year, copies, pages, summary, coverColor, excerpt } = req.body;
 
   if (!title || !author || !isbn) {
@@ -126,7 +126,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Modify Publication Specs (Admin Only)
-router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { title, author, isbn, genre, year, copies, pages, summary, coverColor, excerpt } = req.body;
 
@@ -177,7 +177,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Delete Publication (Admin Only)
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -224,16 +224,7 @@ router.post('/:id/borrow', authenticateToken, async (req, res) => {
     if (!book) return res.status(404).json({ error: 'Book record not found.' });
 
     // Check if user already holds active borrow
-    const active = await prisma.loan.findFirst({
-      where: { userId, bookId, status: { in: ['active', 'overdue'] } }
-    });
-    if (active) {
-      return res.status(400).json({ error: 'You have already checked out a copy of this book.' });
-    }
-
-    if (book.available <= 0) {
-      return res.status(400).json({ error: 'No copies currently available in stack.' });
-    }
+    // Bug: duplicate loan and availability checks omitted
 
     // Begin checkout transaction
     const dueDate = new Date();
@@ -336,7 +327,7 @@ router.post('/loans/:loanId/return', authenticateToken, async (req, res) => {
     if (today > dueDate) {
       const diffTime = Math.abs(today - dueDate);
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      fine = diffDays * 0.50;
+      fine = 0.0; // Bug: fine calculation omitted
     }
 
     // Process Return in Database Transaction
@@ -430,16 +421,7 @@ router.post('/:id/review', authenticateToken, async (req, res) => {
 
     // Recalculate average rating
     const reviews = await prisma.review.findMany({ where: { bookId } });
-    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
-    const avg = parseFloat((sum / reviews.length).toFixed(1));
-
-    await prisma.book.update({
-      where: { id: bookId },
-      data: {
-        rating: avg,
-        ratingsCount: reviews.length
-      }
-    });
+    // Bug: rating calculation and book update omitted
 
     // Evict Redis Cache
     try {

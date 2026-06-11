@@ -1,79 +1,47 @@
 #!/bin/bash
-# Oracle solution: verifies the Bibliotheca backend API is fully functional
-# by exercising auth, books CRUD, borrow/return, reviews, holds, users, and logs.
+# Oracle solution: patches the deliberate bugs in the Bibliotheca backend API
+# and verifies functionality.
 set -euo pipefail
 
 BASE_URL="http://localhost:5000"
 
-echo "=== Bibliotheca Oracle Verification ==="
+echo "=== Bibliotheca Oracle Solution ==="
 
-# 1. Health check
-echo "Step 1: Health check..."
-curl -sf "$BASE_URL/health" | grep -q '"status":"UP"'
-echo "  ✓ API is healthy"
+echo "Step 1: Patching code in environment/app/src/..."
 
-# 2. Login as admin
-echo "Step 2: Admin login..."
-ADMIN_TOKEN=$(curl -sf -X POST "$BASE_URL/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@bibliotheca.com","password":"Admin@1234"}' \
-  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-echo "  ✓ Admin token obtained"
+# Patch books.js
+sed -i 's/router\.post('\''\/'\'', authenticateToken, async/router.post('\''\/'\'', authenticateToken, requireAdmin, async/g' environment/app/src/routes/books.js
+sed -i 's/router\.put('\''\/:id'\'', authenticateToken, async/router.put('\''\/:id'\'', authenticateToken, requireAdmin, async/g' environment/app/src/routes/books.js
+sed -i 's/router\.delete('\''\/:id'\'', authenticateToken, async/router.delete('\''\/:id'\'', authenticateToken, requireAdmin, async/g' environment/app/src/routes/books.js
 
-# 3. Register a test user
-echo "Step 3: Register test user..."
-TEST_EMAIL="oracle_$(date +%s)@test.com"
-curl -sf -X POST "$BASE_URL/api/auth/signup" \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"Oracle User\",\"email\":\"$TEST_EMAIL\",\"password\":\"Test@1234\"}" | grep -q "registered"
-echo "  ✓ User registered"
+sed -i 's/\/\/ Bug: duplicate loan and availability checks omitted/const active = await prisma.loan.findFirst({ where: { userId, bookId, status: { in: ['\''active'\'', '\''overdue'\''] } } }); if (active) { return res.status(400).json({ error: '\''You have already checked out a copy of this book.'\'' }); } if (book.available <= 0) { return res.status(400).json({ error: '\''No copies currently available in stack.'\'' }); }/g' environment/app/src/routes/books.js
 
-# 4. Login as test user
-echo "Step 4: User login..."
-USER_TOKEN=$(curl -sf -X POST "$BASE_URL/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$TEST_EMAIL\",\"password\":\"Test@1234\"}" \
-  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-echo "  ✓ User token obtained"
+sed -i 's/fine = 0\.0; \/\/ Bug: fine calculation omitted/fine = diffDays * 0.50;/g' environment/app/src/routes/books.js
 
-# 5. Get book catalog
-echo "Step 5: Get book catalog..."
-BOOKS=$(curl -sf "$BASE_URL/api/books")
-echo "$BOOKS" | grep -q '\['
-echo "  ✓ Catalog returned"
+sed -i 's/\/\/ Bug: rating calculation and book update omitted/const sum = reviews.reduce((acc, r) => acc + r.rating, 0); const avg = parseFloat((sum \/ reviews.length).toFixed(1)); await prisma.book.update({ where: { id: bookId }, data: { rating: avg, ratingsCount: reviews.length } });/g' environment/app/src/routes/books.js
 
-# 6. Create a book as admin
-echo "Step 6: Create book as admin..."
-BOOK_ID=$(curl -sf -X POST "$BASE_URL/api/books" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d "{\"title\":\"Oracle Test Book\",\"author\":\"Oracle\",\"isbn\":\"ORB-$(date +%s)\",\"genre\":\"Test\",\"year\":2024,\"copies\":5,\"pages\":100,\"summary\":\"Oracle test\",\"coverColor\":\"#000\",\"excerpt\":\"\"}" \
-  | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-echo "  ✓ Book created: $BOOK_ID"
+# Patch users.js
+sed -i 's/import { authenticateToken }/import { authenticateToken, requireAdmin }/g' environment/app/src/routes/users.js
+sed -i 's/authenticateToken, async/authenticateToken, requireAdmin, async/g' environment/app/src/routes/users.js
 
-# 7. Borrow the book as user
-echo "Step 7: Borrow book..."
-curl -sf -X POST "$BASE_URL/api/books/$BOOK_ID/borrow" \
-  -H "Authorization: Bearer $USER_TOKEN" | grep -q "Checkout"
-echo "  ✓ Book borrowed"
+# Patch logs.js
+sed -i 's/import { authenticateToken }/import { authenticateToken, requireAdmin }/g' environment/app/src/routes/logs.js
+sed -i 's/authenticateToken, async/authenticateToken, requireAdmin, async/g' environment/app/src/routes/logs.js
 
-# 8. Submit a review
-echo "Step 8: Submit review..."
-curl -sf -X POST "$BASE_URL/api/books/$BOOK_ID/review" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $USER_TOKEN" \
-  -d '{"rating":5,"comment":"Excellent oracle test book!"}' | grep -q '"rating"'
-echo "  ✓ Review submitted"
+echo "Step 2: Restarting backend container..."
+# The container name should be matched based on the docker-compose file
+docker compose -f environment/docker-compose.yaml restart main
 
-# 9. Admin list users
-echo "Step 9: Admin list users..."
-curl -sf "$BASE_URL/api/users" -H "Authorization: Bearer $ADMIN_TOKEN" | grep -q '\['
-echo "  ✓ User list returned"
+echo "Step 3: Waiting for API to come back online..."
+sleep 5
+for i in {1..15}; do
+  if curl -sf "$BASE_URL/health" | grep -q '"status":"UP"'; then
+    echo "API is healthy!"
+    break
+  fi
+  echo "Waiting..."
+  sleep 2
+done
 
-# 10. Admin read logs
-echo "Step 10: Admin read audit logs..."
-curl -sf "$BASE_URL/api/logs" -H "Authorization: Bearer $ADMIN_TOKEN" | grep -q '\['
-echo "  ✓ Logs returned"
-
-echo ""
-echo "=== All oracle verification steps passed ==="
+# The automated python tests will run next and verify everything.
+echo "Oracle solution applied successfully."

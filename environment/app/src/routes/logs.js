@@ -2,7 +2,7 @@ import express from 'express';
 import prisma from '../config/db.js';
 import redisClient from '../config/redis.js';
 import { producer } from '../config/kafka.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -23,7 +23,7 @@ const publishKafkaEvent = async (type, message) => {
 };
 
 // Fetch System Logs (Admin Only)
-router.get('/', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const logs = await prisma.systemLog.findMany({
       orderBy: { timestamp: 'desc' }

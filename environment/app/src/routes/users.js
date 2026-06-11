@@ -1,7 +1,7 @@
 import express from 'express';
 import prisma from '../config/db.js';
 import { producer } from '../config/kafka.js';
-import { authenticateToken, requireAdmin } from '../middleware/auth.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ const publishKafkaEvent = async (type, message) => {
 };
 
 // Get Member Directory (Admin Only)
-router.get('/', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const users = await prisma.user.findMany();
     return res.json(users);
@@ -33,7 +33,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Toggle Member suspension status (Admin Only)
-router.post('/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/status', authenticateToken, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -56,7 +56,7 @@ router.post('/:id/status', authenticateToken, requireAdmin, async (req, res) => 
 });
 
 // Delete User Profile (Admin Only)
-router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
 
   try {
@@ -75,7 +75,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Settle Fine (Admin Only)
-router.post('/:id/settle-fine', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/:id/settle-fine', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { amount } = req.body;
 

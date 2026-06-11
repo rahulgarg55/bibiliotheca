@@ -1,18 +1,9 @@
-import { createClient } from 'redis';
-
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const redisClient = createClient({ url: redisUrl });
-
-redisClient.on('error', (err) => console.error('Redis Client Error', err));
-redisClient.on('connect', () => console.log('Successfully connected to Redis Caching Server'));
-
-// Connect immediately
-(async () => {
-  try {
-    await redisClient.connect();
-  } catch (err) {
-    console.error('Failed to connect to Redis', err);
-  }
-})();
-
+// Mock redis client for edition_2
+const redisClient = {
+  get: async (key) => null,
+  setEx: async (key, time, value) => {},
+  del: async (key) => {},
+  connect: async () => console.log('Mock Redis connected'),
+  on: (event, cb) => {}
+};
 export default redisClient;
